@@ -14,25 +14,33 @@
       file:
         path: /home/sysadmin/.kube
         state: directory
-        mode: 0755
+        mode: '0755'
+        owner: sysadmin
+        group: sysadmin
     
     - name: create .kube directory               
       file:       
         path: /root/.kube               
         state: directory                         
-        mode: 0755
+        mode: '0755'
 
     - name: copies admin.conf to user's kube config
       copy:
         src: /etc/kubernetes/admin.conf
         dest: /home/sysadmin/.kube/config
+        mode: 0400
+        owner: sysadmin
+        group: sysadmin
         remote_src: yes
 
     - name: copies admin.conf to root kube config
       copy:                                      
         src: /etc/kubernetes/admin.conf          
-        dest: /root/.kube/config        
+        dest: /root/.kube/config       
+        mode: 0400 
         remote_src: yes
+      tags:
+       - root_config_file
 
     - name: install Pod network
       shell: kubectl apply -f https://docs.projectcalico.org/manifests/calico.yaml
@@ -69,28 +77,43 @@
         state: present
         filename: helm
 
-    - name: Install Helm
+    - name: Install Helm and python3-pip
       apt:
-       name: helm
+       pkg:
+        - helm
+        - python3-pip
        update_cache: yes
+      tags:
+        - helm_install
+
+    - name: Install python3-pip modules for helm
+      pip:
+       name: 
+        - pyhelm
+        - grpcio
     
     - name: Install Nginx Ingress( Kubernetes supported)
-      helm:
-       host: localhost
-       chart:
-         name: ingress-nginx
-         source:
-           type: repo
-           location: https://kubernetes.github.io/ingress-nginx
-       state: present
-       name: nginx-ingress
-       namespace: nginx-ingress
+      shell: |
+             helm upgrade --install ingress-nginx ingress-nginx \
+             --repo https://kubernetes.github.io/ingress-nginx \
+             --namespace ingress-nginx --create-namespace
+      tags:
+       - nginx
+ 
+    - name: copy values.yml file to master
+      copy:
+       src: values.yml
+       dest: /home/sysadmin
+      tags:
+       - copy_values
 
     - name: Install metallb 
       shell: |
              helm repo add metallb https://metallb.github.io/metallb
              helm repo update
-             helm install metallb metallb/metallb -f values.yaml
+             helm install metallb metallb/metallb -f values.yml
+      tags:
+       - metal-lb
 
 - hosts: workers
   gather_facts: yes
